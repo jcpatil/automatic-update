@@ -1,0 +1,298 @@
+import time
+import os
+import sys
+from dotenv import load_dotenv
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+
+# --- Configuration ---
+USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
+PROFILE_URL = "https://www.naukri.com/mnjuser/profile"
+LOGIN_URL = "https://www.naukri.com/nlogin/login"
+
+# USER CREDENTIALS
+# Load environment variables
+load_dotenv()
+
+USERNAME = os.getenv("NAUKRI_USERNAME")
+PASSWORD = os.getenv("NAUKRI_PASSWORD")
+
+if not USERNAME or not PASSWORD:
+    print("Error: NAUKRI_USERNAME or NAUKRI_PASSWORD not found in environment variables.")
+    print("Please ensure a .env file exists with these keys.")
+    sys.exit(1)
+
+def get_driver():
+    options = Options()
+    options.add_argument(f"user-data-dir={USER_DATA_DIR}")
+    options.add_argument("--start-maximized")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    # options.add_argument("--headless=new") 
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
+
+def login_to_naukri(driver):
+    print("Attempting to log in...")
+    driver.get(LOGIN_URL)
+    time.sleep(3)
+    
+    try:
+        wait = WebDriverWait(driver, 10)
+        email_field = wait.until(EC.visibility_of_element_located((By.ID, "usernameField")))
+        email_field.clear()
+        email_field.send_keys(USERNAME)
+        
+        password_field = driver.find_element(By.ID, "passwordField")
+        password_field.clear()
+        password_field.send_keys(PASSWORD)
+        
+        login_button = driver.find_element(By.XPATH, "//button[contains(text(),'Login')]")
+        login_button.click()
+        
+        print("Login credentials accepted. Waiting for redirect...")
+        wait.until(EC.url_contains("mnjuser/profile"))
+        print("Login successful!")
+        return True
+    except Exception as e:
+        print(f"Login failed: {e}")
+        return False
+
+def update_resume_headline(driver):
+    print("Navigating to profile...")
+    driver.get(PROFILE_URL)
+    wait = WebDriverWait(driver, 25)
+
+    # Check for login redirection or if we are merely at the dashboard
+    # The user screenshot shows they are at the dashboard (home page), so we might need to force navigation
+    if "login" in driver.current_url or "naukri.com/mnjuser/homepage" in driver.current_url:
+        print("Not on profile page. Checking login...")
+        
+        # If explicitly at login page, do the login dance
+        if "login" in driver.current_url:
+             if not login_to_naukri(driver):
+                return False
+        
+    # CRITICAL FIX: After login (or if we were just on homepage), GO TO PROFILE
+        print("Navigating to Profile Page explicitly...")
+        driver.get(PROFILE_URL)
+        time.sleep(5) # Increased wait
+
+    try:
+        print(f"DEBUG: Current URL: {driver.current_url}")
+        
+        # Save source for debugging logic (Restored)
+        # with open("debug_page_source.html", "w", encoding="utf-8") as f:
+        #     f.write(driver.page_source)
+            
+        print("Locating 'Resume Headline' section...")
+
+        edit_button = None
+        headline_element = None
+        parent_container = None
+
+        # STRATEGY 1: Find the Widget Container directly
+        # The section is usually a div with class 'widgetHead' that contains the text 'Resume Headline'
+        try:
+            parent_container = driver.find_element(By.XPATH, "//div[contains(@class, 'widgetHead')][.//span[contains(text(), 'Resume')]]")
+            print("Strategy 1: Found .widgetHead container with 'Resume' text.")
+            
+            # Now find the edit icon inside this specific container
+            try:
+                edit_button = parent_container.find_element(By.CSS_SELECTOR, ".edit")
+                print("Strategy 1: Found .edit icon inside container.")
+            except:
+                print("Strategy 1: Container found but .edit icon missing.")
+        except:
+            pass
+
+        # STRATEGY 2: Fallback to finding the Title Text first (previous method)
+        if not edit_button:
+            print("Strategy 2: Fallback to searching for title text...")
+            selectors = [
+                "//span[contains(@class, 'widgetTitle') and contains(text(), 'Resume')]",
+                "//span[contains(text(), 'Resume Headline')]",
+                "//*[contains(translate(text(), 'RESUME HEADLINE', 'resume headline'), 'resume headline')]"
+            ]
+            
+            for selector in selectors:
+                try:
+                    headline_element = driver.find_element(By.XPATH, selector)
+                    print(f"Found match using: {selector}")
+                    # Try to find parent/grandparent
+                    try:
+                        parent = headline_element.find_element(By.XPATH, "./..")
+                        edit_button = parent.find_element(By.CSS_SELECTOR, ".edit")
+                        print("Found .edit in parent.")
+                        parent_container = parent
+                        break
+                    except:
+                        try:
+                            grandparent = headline_element.find_element(By.XPATH, "./../..")
+                            edit_button = grandparent.find_element(By.CSS_SELECTOR, ".edit")
+                            print("Found .edit in grandparent.")
+                            parent_container = grandparent
+                            break
+                        except:
+                            continue
+                except:
+                    continue
+
+        if not edit_button:
+            print("CRITICAL DEBUG: Could not find Edit button.")
+            
+            # Dump info about what we DID find
+            if headline_element:
+                print("Dumping HTML of found headline element parent:")
+                try:
+                    print(headline_element.find_element(By.XPATH, "./..").get_attribute('outerHTML'))
+                except: 
+                    print("Could not get parent HTML.")
+            
+            driver.save_screenshot("edit_button_missing.png")
+            
+            # Save full page source for analysis
+            with open("debug_page_source.html", "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+                
+            raise Exception("Could not locate 'Edit' button nearby.")
+        
+        # Scroll to view
+        # Using a precise scroll to center the element to avoid getting stuck under sticky headers
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", edit_button)
+        time.sleep(1) 
+        
+        # Click the button
+        # Using JS click to bypass "ElementClickIntercepted" errors from sticky headers/overlays
+        try:
+            edit_button.click()
+        except:
+            print("Standard click intercepted. Using JavaScript click...")
+            driver.execute_script("arguments[0].click();", edit_button)
+            
+        print("Clicked Edit button.")
+        
+        # Wait for modal or inline edit
+        # It seems Naukri opens a modal with a textarea
+        print("Waiting for textarea to appear...")
+        textarea = None
+        txt_selectors = [
+            (By.ID, "resumeHeadlineTxt"), 
+            (By.CSS_SELECTOR, "textarea#resumeHeadlineTxt"),
+            (By.XPATH, "//textarea[@placeholder='Type Resume Headline']"),
+            (By.TAG_NAME, "textarea")
+        ]
+        
+        for method, sel in txt_selectors:
+            try:
+                textarea = wait.until(EC.element_to_be_clickable((method, sel)))
+                if textarea and textarea.is_displayed():
+                    break
+            except:
+                continue
+        
+        if not textarea:
+             raise Exception("Could not find visible Textarea to edit.")
+             
+        # Logic to update text: remove '.' if exists, else add it
+        current_text = textarea.get_attribute("value")
+        print(f"Current Headline: {current_text}")
+        
+        new_text = current_text
+        if current_text.endswith("."):
+            new_text = current_text.rstrip(".")
+            print("Action: Removing trailing period.")
+        else:
+            new_text = current_text + "."
+            print("Action: Adding trailing period.")
+            
+        # Update the textarea
+        textarea.clear()
+        time.sleep(0.5)
+        textarea.send_keys(new_text)
+        print(f"New Headline set to: {new_text}")
+
+        # Find save button in the modal (usually sibling of textarea's container or at bottom)
+        save_button = None
+        save_selectors = [
+            "//button[contains(text(),'Save')]",
+            "//div[@class='lightbox']//button[contains(@class, 'blue-btn')]",
+            "//button[normalize-space()='Save']"
+        ]
+        
+        for xpath in save_selectors:
+             try:
+                 save_button = driver.find_element(By.XPATH, xpath)
+                 if save_button and save_button.is_displayed(): 
+                     break
+             except:
+                 continue
+
+        if not save_button:
+            # Last resort: find the only primary button visible
+             buttons = driver.find_elements(By.TAG_NAME, "button")
+             for btn in buttons:
+                 if btn.is_displayed() and "Save" in btn.text:
+                     save_button = btn
+                     break
+
+        if not save_button:
+             raise Exception("Could not find Save button.")
+
+        # Click Save
+        # Using JS click to be safe against footer/overlays
+        driver.execute_script("arguments[0].click();", save_button)
+        print("Clicked Save.")
+        time.sleep(3)
+        print("Update Successful!")
+        
+        # Desktop Notification
+        try:
+            from plyer import notification
+            notification_title = "Naukri Profile Updater"
+            notification_msg = f"Headline updated successfully!\nNew: {new_text}"
+            
+            notification.notify(
+                title=notification_title,
+                message=notification_msg,
+                app_name='Naukri Updater',
+                timeout=10
+            )
+            print("Notification sent.")
+        except Exception as n_err:
+            print(f"Notification failed: {n_err}")
+            
+        return True
+
+    except Exception as e:
+        print(f"Error during update: {e}")
+        driver.save_screenshot("error_screenshot.png")
+        return False
+
+def main():
+    print("Starting Naukri Updater...")
+    driver = None
+    try:
+        driver = get_driver()
+        success = update_resume_headline(driver)
+        if success:
+            print("Profile updated successfully.")
+        else:
+            print("Failed to update profile.")
+            # Keep browser open if failed for debugging
+            # time.sleep(10) 
+            
+    except Exception as e:
+        print(f"Critical Error: {e}")
+    finally:
+        if driver:
+            print("Closing browser...")
+            driver.quit()
+
+if __name__ == "__main__":
+    main()
