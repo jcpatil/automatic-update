@@ -1,0 +1,31 @@
+name: Naukri Resume Headline Updater
+
+on:
+  schedule:
+    # Twice a day (IST: 9:30 AM & 9:30 PM)
+    - cron: "0 4,16 * * *"
+  workflow_dispatch:
+
+jobs:
+  selenium-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install selenium webdriver-manager plyer
+
+      - name: Run Selenium script
+        env:
+          NAUKRI_USERNAME: ${{ secrets.NAUKRI_USERNAME }}
+          NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
+        run: |
+          python main.py
