@@ -89,9 +89,32 @@ def update_resume_headline(driver):
     try:
         print(f"DEBUG: Current URL: {driver.current_url}")
         
-        # Save source for debugging logic (Restored)
-        # with open("debug_page_source.html", "w", encoding="utf-8") as f:
-        #     f.write(driver.page_source)
+        # CRITICAL: Wait for page to fully load with explicit waits
+        print("DEBUG: Waiting for page to fully load...")
+        time.sleep(8)  # Give extra time for JavaScript to load
+        
+        # Verify we're logged in by checking for profile indicators
+        try:
+            # Look for common profile indicators (name, profile completeness, etc.)
+            profile_indicators = driver.find_elements(By.XPATH, "//*[contains(@class, 'name') or contains(@class, 'profile')]")
+            print(f"DEBUG: Found {len(profile_indicators)} potential profile indicators")
+            
+            # Try to find any text content on the page
+            page_text = driver.find_element(By.TAG_NAME, "body").text
+            print(f"DEBUG: Page has {len(page_text)} characters of text")
+            
+            if len(page_text) < 500:
+                print("WARNING: Page seems to have very little content - might not be fully loaded")
+                print(f"DEBUG: First 200 chars of page: {page_text[:200]}")
+        except Exception as e:
+            print(f"DEBUG: Error checking page indicators: {str(e)[:100]}")
+        
+        # Save a screenshot to see what we're looking at
+        try:
+            driver.save_screenshot("before_edit_search.png")
+            print("DEBUG: Saved screenshot as before_edit_search.png")
+        except:
+            pass
             
         print("Locating 'Resume Headline' section...")
 
