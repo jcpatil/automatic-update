@@ -33,6 +33,20 @@ def get_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
     
+    # Aggressive stealth parameters
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--start-maximized")
+    
+    # Spoof user agent to look like a real browser
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+    
+    # Additional anti-detection
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    
     # Use undetected-chromedriver with headless mode
     # Explicitly use version 144 to match GitHub Actions Chrome
     driver = uc.Chrome(
@@ -41,6 +55,15 @@ def get_driver():
         use_subprocess=False,
         version_main=144  # Match Chrome 144.x on GitHub Actions
     )
+    
+    # Additional JavaScript patches to remove webdriver traces
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """
+    })
     
     return driver
 
