@@ -32,14 +32,13 @@ def get_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--start-maximized")
     
     # Use undetected-chromedriver with headless mode
+    # Let it auto-install the matching ChromeDriver version
     driver = uc.Chrome(
         options=options,
         headless=True,
-        use_subprocess=False,
-        version_main=None  # Auto-detect Chrome version
+        use_subprocess=False
     )
     
     return driver
