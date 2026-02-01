@@ -104,20 +104,18 @@ def update_resume_headline(driver):
         headline_selectors = [
              "//span[contains(text(), 'Resume Headline')]",
              "//span[contains(@class, 'widgetTitle') and contains(text(), 'Resume')]",
-             "//*[contains(translate(text(), 'RESUME HEADLINE', 'resume headline'), 'resume headline')]"
+             "//*[contains(translate(text(), 'RESUME HEADLINE', 'resume headline'), 'resume headline')]",
+             "//div[contains(@class, 'widgetHead')]//span[contains(text(), 'Resume')]",
+             "//*[contains(text(), 'Resume')]"
         ]
 
+        print("DEBUG: Attempting Strategy 1 - Text-based search...")
         for selector in headline_selectors:
             try:
                 headline_element = driver.find_element(By.XPATH, selector)
-                print(f"Found 'Resume Headline' text using: {selector}")
+                print(f"✓ Found 'Resume Headline' text using selector #{headline_selectors.index(selector)+1}")
                 
-                # Now look for the edit button nearby (sibling, child of parent, etc.)
-                # Common patterns:
-                # 1. Sibling edit button
-                # 2. Key icon classes: .edit, .icon-edit, .naukicon-edit, .ni-gnb-icn-edit_icon
-                
-                # Try finding 'Edit' text (sometimes hidden)
+                # Now look for the edit button nearby
                 parent = headline_element.find_element(By.XPATH, "./..")
                 grandparent = headline_element.find_element(By.XPATH, "./../..")
                 
@@ -134,33 +132,80 @@ def update_resume_headline(driver):
                      button_candidates.extend(container.find_elements(By.XPATH, ".//i | .//span[contains(@class, 'icon')]"))
                 
                 if button_candidates:
-                    print(f"Found {len(button_candidates)} potential edit buttons nearby.")
-                    # Pick the first one that is displayed
+                    print(f"DEBUG: Found {len(button_candidates)} potential edit buttons nearby")
                     for btn in button_candidates:
-                        if btn.is_displayed():
-                            edit_button = btn
-                            print("Selected a visible edit button.")
-                            parent_container = grandparent # Assign grandparent as container context
-                            break
+                        try:
+                            if btn.is_displayed():
+                                edit_button = btn
+                                print("✓ Selected a visible edit button from Strategy 1")
+                                parent_container = grandparent
+                                break
+                        except:
+                            continue
                     if edit_button:
                         break
-            except:
+            except Exception as e:
+                print(f"DEBUG: Selector #{headline_selectors.index(selector)+1} failed: {str(e)[:50]}")
                 continue
 
-        # STRATEGY 2: Direct Icon Search (if text search failed or button not found near text)
+        # STRATEGY 2: Search for ALL edit-like elements on the entire page
         if not edit_button:
-            print("Strategy 2: Searching specifically for edit icons on the page...")
-            try:
-                # Look for specific icon classes mentioned in CSS
-                possible_icons = driver.find_elements(By.CSS_SELECTOR, ".ni-gnb-icn-edit_icon")
-                if possible_icons:
-                    for icon in possible_icons:
-                        if icon.is_displayed():
-                            edit_button = icon
-                            print("Found visible .ni-gnb-icn-edit_icon")
+            print("DEBUG: Strategy 1 failed. Attempting Strategy 2 - Global icon search...")
+            
+            # Cast a wide net for all possible edit buttons/icons
+            all_edit_selectors = [
+                ".edit",
+                ".icon-edit", 
+                ".naukicon-edit",
+                "[class*='edit']",
+                "[class*='pencil']",
+                "span.edit",
+                "i.edit",
+                "a.edit",
+                "button[class*='edit']",
+                "span[class*='icon']"
+            ]
+            
+            all_candidates = []
+            for css_sel in all_edit_selectors:
+                try:
+                    found = driver.find_elements(By.CSS_SELECTOR, css_sel)
+                    all_candidates.extend(found)
+                    if found:
+                        print(f"DEBUG: Found {len(found)} elements matching '{css_sel}'")
+                except:
+                    continue
+            
+            print(f"DEBUG: Total edit-like elements found: {len(all_candidates)}")
+            
+            # Filter for visible ones
+            visible_candidates = []
+            for candidate in all_candidates:
+                try:
+                    if candidate.is_displayed():
+                        visible_candidates.append(candidate)
+                except:
+                    continue
+            
+            print(f"DEBUG: Visible edit-like elements: {len(visible_candidates)}")
+            
+            # Try to find one near "Resume" text or in the upper portion of the page
+            if visible_candidates:
+                # Prefer elements in the upper half of the page (likely profile section)
+                for candidate in visible_candidates:
+                    try:
+                        location = candidate.location
+                        if location['y'] < 1000:  # Upper portion
+                            edit_button = candidate
+                            print(f"✓ Selected edit button at y={location['y']}")
                             break
-            except:
-                pass
+                    except:
+                        continue
+                
+                # If still not found, just take the first visible one
+                if not edit_button and visible_candidates:
+                    edit_button = visible_candidates[0]
+                    print("✓ Selected first visible edit-like element")
 
 
         if not edit_button:
