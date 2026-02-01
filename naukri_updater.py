@@ -99,52 +99,69 @@ def update_resume_headline(driver):
         headline_element = None
         parent_container = None
 
-        # STRATEGY 1: Find the Widget Container directly
-        # The section is usually a div with class 'widgetHead' that contains the text 'Resume Headline'
-        try:
-            parent_container = driver.find_element(By.XPATH, "//div[contains(@class, 'widgetHead')][.//span[contains(text(), 'Resume')]]")
-            print("Strategy 1: Found .widgetHead container with 'Resume' text.")
-            
-            # Now find the edit icon inside this specific container
-            try:
-                edit_button = parent_container.find_element(By.CSS_SELECTOR, ".edit")
-                print("Strategy 1: Found .edit icon inside container.")
-            except:
-                print("Strategy 1: Container found but .edit icon missing.")
-        except:
-            pass
+        # STRATEGY 1: Robust Text Search + Icon Lookup
+        # Locate the "Resume Headline" text first, then find the edit button nearby
+        headline_selectors = [
+             "//span[contains(text(), 'Resume Headline')]",
+             "//span[contains(@class, 'widgetTitle') and contains(text(), 'Resume')]",
+             "//*[contains(translate(text(), 'RESUME HEADLINE', 'resume headline'), 'resume headline')]"
+        ]
 
-        # STRATEGY 2: Fallback to finding the Title Text first (previous method)
-        if not edit_button:
-            print("Strategy 2: Fallback to searching for title text...")
-            selectors = [
-                "//span[contains(@class, 'widgetTitle') and contains(text(), 'Resume')]",
-                "//span[contains(text(), 'Resume Headline')]",
-                "//*[contains(translate(text(), 'RESUME HEADLINE', 'resume headline'), 'resume headline')]"
-            ]
-            
-            for selector in selectors:
-                try:
-                    headline_element = driver.find_element(By.XPATH, selector)
-                    print(f"Found match using: {selector}")
-                    # Try to find parent/grandparent
-                    try:
-                        parent = headline_element.find_element(By.XPATH, "./..")
-                        edit_button = parent.find_element(By.CSS_SELECTOR, ".edit")
-                        print("Found .edit in parent.")
-                        parent_container = parent
-                        break
-                    except:
-                        try:
-                            grandparent = headline_element.find_element(By.XPATH, "./../..")
-                            edit_button = grandparent.find_element(By.CSS_SELECTOR, ".edit")
-                            print("Found .edit in grandparent.")
-                            parent_container = grandparent
+        for selector in headline_selectors:
+            try:
+                headline_element = driver.find_element(By.XPATH, selector)
+                print(f"Found 'Resume Headline' text using: {selector}")
+                
+                # Now look for the edit button nearby (sibling, child of parent, etc.)
+                # Common patterns:
+                # 1. Sibling edit button
+                # 2. Key icon classes: .edit, .icon-edit, .naukicon-edit, .ni-gnb-icn-edit_icon
+                
+                # Try finding 'Edit' text (sometimes hidden)
+                parent = headline_element.find_element(By.XPATH, "./..")
+                grandparent = headline_element.find_element(By.XPATH, "./../..")
+                
+                button_candidates = []
+                
+                # Search in parent and grandparent
+                for container in [parent, grandparent]:
+                     # Look for known classes
+                     button_candidates.extend(container.find_elements(By.CSS_SELECTOR, ".edit"))
+                     button_candidates.extend(container.find_elements(By.CSS_SELECTOR, ".icon-edit"))
+                     button_candidates.extend(container.find_elements(By.CSS_SELECTOR, ".naukicon-edit"))
+                     button_candidates.extend(container.find_elements(By.CSS_SELECTOR, "[class*='edit-icon']"))
+                     button_candidates.extend(container.find_elements(By.CSS_SELECTOR, "[class*='pencil']"))
+                     button_candidates.extend(container.find_elements(By.XPATH, ".//i | .//span[contains(@class, 'icon')]"))
+                
+                if button_candidates:
+                    print(f"Found {len(button_candidates)} potential edit buttons nearby.")
+                    # Pick the first one that is displayed
+                    for btn in button_candidates:
+                        if btn.is_displayed():
+                            edit_button = btn
+                            print("Selected a visible edit button.")
+                            parent_container = grandparent # Assign grandparent as container context
                             break
-                        except:
-                            continue
-                except:
-                    continue
+                    if edit_button:
+                        break
+            except:
+                continue
+
+        # STRATEGY 2: Direct Icon Search (if text search failed or button not found near text)
+        if not edit_button:
+            print("Strategy 2: Searching specifically for edit icons on the page...")
+            try:
+                # Look for specific icon classes mentioned in CSS
+                possible_icons = driver.find_elements(By.CSS_SELECTOR, ".ni-gnb-icn-edit_icon")
+                if possible_icons:
+                    for icon in possible_icons:
+                        if icon.is_displayed():
+                            edit_button = icon
+                            print("Found visible .ni-gnb-icn-edit_icon")
+                            break
+            except:
+                pass
+
 
         if not edit_button:
             print("CRITICAL DEBUG: Could not find Edit button.")
