@@ -2,13 +2,10 @@ import time
 import os
 import sys
 from dotenv import load_dotenv
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 
 # --- Configuration ---
 USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
@@ -28,16 +25,23 @@ if not USERNAME or not PASSWORD:
     sys.exit(1)
 
 def get_driver():
-    options = Options()
-    options.add_argument(f"user-data-dir={USER_DATA_DIR}")
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    # GitHub Actions specific options
-    options.add_argument("--headless=new") 
+    """Initialize undetected Chrome driver to bypass bot detection"""
+    options = uc.ChromeOptions()
+    
+    # Essential options for GitHub Actions
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--start-maximized")
+    
+    # Use undetected-chromedriver with headless mode
+    driver = uc.Chrome(
+        options=options,
+        headless=True,
+        use_subprocess=False,
+        version_main=None  # Auto-detect Chrome version
+    )
+    
     return driver
 
 def login_to_naukri(driver):
