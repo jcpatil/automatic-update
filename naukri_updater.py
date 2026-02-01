@@ -34,11 +34,12 @@ def get_driver():
     options.add_argument("--disable-blink-features=AutomationControlled")
     
     # Use undetected-chromedriver with headless mode
-    # Let it auto-install the matching ChromeDriver version
+    # Explicitly use version 144 to match GitHub Actions Chrome
     driver = uc.Chrome(
         options=options,
         headless=True,
-        use_subprocess=False
+        use_subprocess=False,
+        version_main=144  # Match Chrome 144.x on GitHub Actions
     )
     
     return driver
